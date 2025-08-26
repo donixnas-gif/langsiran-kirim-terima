@@ -333,7 +333,6 @@
                         <input type="text" id="filter-bpb-kirim" placeholder="Filter No. BPB..." class="table-filter bg-gray-700 border border-gray-600 text-white text-sm rounded-lg focus:ring-blue-500 focus:border-blue-500 block w-full p-2.5">
                         <input type="text" id="filter-kode-kirim" placeholder="Filter Kode Barang/Warna..." class="table-filter bg-gray-700 border border-gray-600 text-white text-sm rounded-lg focus:ring-blue-500 focus:border-blue-500 block w-full p-2.5">
                     </div>
-                    <!-- [PERUBAHAN] Area Rekapitulasi dihilangkan -->
                     <div class="table-container overflow-auto max-h-96">
                         <table id="table-kirim" class="w-full text-sm text-left">
                             <thead class="text-xs text-gray-300 uppercase bg-gray-700 sticky top-0">
@@ -372,7 +371,6 @@
                         <input type="text" id="filter-bpb-terima" placeholder="Filter No. BPB..." class="table-filter bg-gray-700 border border-gray-600 text-white text-sm rounded-lg focus:ring-blue-500 focus:border-blue-500 block w-full p-2.5">
                         <input type="text" id="filter-kode-terima" placeholder="Filter Kode Barang/Warna..." class="table-filter bg-gray-700 border border-gray-600 text-white text-sm rounded-lg focus:ring-blue-500 focus:border-blue-500 block w-full p-2.5">
                     </div>
-                    <!-- [PERUBAHAN] Area Rekapitulasi dihilangkan -->
                     <div class="table-container overflow-auto max-h-96">
                         <table id="table-terima" class="w-full text-sm text-left">
                             <thead class="text-xs text-gray-300 uppercase bg-gray-700 sticky top-0">
@@ -579,36 +577,47 @@
 
             isSending = true;
 
-            try {
-                const processQueue = async (queue, url, type) => {
-                    while (queue.length > 0) {
-                        const submission = queue[0];
-                        try {
-                            const formData = new FormData();
-                            for (const key in submission.data) { formData.append(key, submission.data[key]); }
-                            formData.append('itemsJSON', JSON.stringify(submission.items));
-                            formData.append('action', 'submit');
-                            formData.append('logDetails', submission.logDetails);
+            // [FIX] Logika pemrosesan antrean diperbaiki untuk mencegah refresh berulang
+            const processQueue = async (queue, url, type) => {
+                let processedCount = 0;
+                while (queue.length > 0) {
+                    const submission = queue[0];
+                    try {
+                        const formData = new FormData();
+                        for (const key in submission.data) { formData.append(key, submission.data[key]); }
+                        formData.append('itemsJSON', JSON.stringify(submission.items));
+                        formData.append('action', 'submit');
+                        formData.append('logDetails', submission.logDetails);
 
-                            const response = await fetch(url, { method: 'POST', body: formData });
-                            const result = await response.json();
-                            if (result.result !== 'success') throw new Error(result.error || 'Unknown server error');
-                            
-                            queue.shift();
-                            localStorage.setItem(`submissionQueue${type}`, JSON.stringify(queue));
-                            showToast(`1 data ${type.toLowerCase()} berhasil disinkronkan.`, 'success');
-                            await loadInitialView();
-                        } catch (error) {
-                            console.error('Gagal mengirim data dari antrean:', error);
-                            showToast('Gagal sinkronisasi, akan dicoba lagi nanti.', 'error');
-                            return;
-                        }
+                        const response = await fetch(url, { method: 'POST', body: formData });
+                        const result = await response.json();
+                        if (result.result !== 'success') throw new Error(result.error || 'Unknown server error');
+                        
+                        queue.shift(); // Hapus dari antrean hanya jika berhasil
+                        processedCount++;
+                    } catch (error) {
+                        console.error('Gagal mengirim data dari antrean:', error);
+                        showToast('Gagal sinkronisasi, akan dicoba lagi nanti.', 'error');
+                        // Hentikan pemrosesan antrean ini jika terjadi kesalahan
+                        localStorage.setItem(`submissionQueue${type}`, JSON.stringify(queue));
+                        return processedCount; 
                     }
-                };
-                
-                await processQueue(queueKirim, scriptURLKirim, 'Kirim');
-                await processQueue(queueTerima, scriptURLTerima, 'Terima');
+                }
+                localStorage.setItem(`submissionQueue${type}`, JSON.stringify(queue));
+                if (processedCount > 0) {
+                    showToast(`${processedCount} data ${type.toLowerCase()} berhasil disinkronkan.`, 'success');
+                }
+                return processedCount;
+            };
 
+            try {
+                const processedKirim = await processQueue(queueKirim, scriptURLKirim, 'Kirim');
+                const processedTerima = await processQueue(queueTerima, 'Terima');
+
+                // Lakukan refresh HANYA SEKALI jika ada data yang diproses
+                if (processedKirim > 0 || processedTerima > 0) {
+                    await loadInitialView();
+                }
             } finally {
                 isSending = false;
             }
@@ -933,6 +942,26 @@
                     synth.triggerAttackRelease("E5", "8n", now);
                     synth.triggerAttackRelease("A5", "8n", now + 0.12);
                 }
+
+                // [FIX] Tambahkan data ke state lokal secara optimis untuk mencegah race condition
+                const targetArray = isKirimForm ? allDataKirim : allDataTerima;
+                items.forEach(item => {
+                    const newRow = {
+                        'Tanggal': commonData.Tanggal,
+                        'No BPB': commonData['No BPB'],
+                        'Tujuan': commonData.Tujuan,
+                        'Nama Pengirim': isKirimForm ? commonData.Nama : undefined,
+                        'Nama Penerima': !isKirimForm ? commonData.Nama : undefined,
+                        'Kode Barang': item['Kode Barang'],
+                        'Jumlah': item.Jumlah,
+                        'Keterangan': commonData.Keterangan
+                    };
+                    targetArray.push(newRow);
+                });
+
+                // Terapkan filter untuk segera menampilkan data baru di tabel
+                applyFilters();
+                
                 form.reset();
                 clearLocalStorage(form.id);
                 loadFormData(form.id);
