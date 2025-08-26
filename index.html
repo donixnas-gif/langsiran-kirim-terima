@@ -577,7 +577,6 @@
 
             isSending = true;
 
-            // [FIX] Logika pemrosesan antrean diperbaiki untuk mencegah refresh berulang
             const processQueue = async (queue, url, type) => {
                 let processedCount = 0;
                 while (queue.length > 0) {
@@ -593,12 +592,11 @@
                         const result = await response.json();
                         if (result.result !== 'success') throw new Error(result.error || 'Unknown server error');
                         
-                        queue.shift(); // Hapus dari antrean hanya jika berhasil
+                        queue.shift();
                         processedCount++;
                     } catch (error) {
                         console.error('Gagal mengirim data dari antrean:', error);
                         showToast('Gagal sinkronisasi, akan dicoba lagi nanti.', 'error');
-                        // Hentikan pemrosesan antrean ini jika terjadi kesalahan
                         localStorage.setItem(`submissionQueue${type}`, JSON.stringify(queue));
                         return processedCount; 
                     }
@@ -612,9 +610,9 @@
 
             try {
                 const processedKirim = await processQueue(queueKirim, scriptURLKirim, 'Kirim');
-                const processedTerima = await processQueue(queueTerima, 'Terima');
+                // [FIX] Menambahkan parameter scriptURLTerima yang hilang
+                const processedTerima = await processQueue(queueTerima, scriptURLTerima, 'Terima');
 
-                // Lakukan refresh HANYA SEKALI jika ada data yang diproses
                 if (processedKirim > 0 || processedTerima > 0) {
                     await loadInitialView();
                 }
@@ -1234,7 +1232,7 @@
                 checkBreakTime();
                 setInterval(checkBreakTime, 30000);
             } else {
-                loginError.classList.remove('hidden');
+                loginError.classList.add('hidden');
             }
         });
 
@@ -1249,3 +1247,4 @@
     </script>
 </body>
 </html>
+" and am asking a follow up questi
