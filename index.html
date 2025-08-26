@@ -577,6 +577,7 @@
 
             isSending = true;
 
+            // [FIX] Logika pemrosesan antrean diperbaiki untuk mencegah refresh berulang
             const processQueue = async (queue, url, type) => {
                 let processedCount = 0;
                 while (queue.length > 0) {
@@ -592,15 +593,17 @@
                         const result = await response.json();
                         if (result.result !== 'success') throw new Error(result.error || 'Unknown server error');
                         
-                        queue.shift();
+                        queue.shift(); // Hapus dari antrean hanya jika berhasil
                         processedCount++;
                     } catch (error) {
-                        console.error('Gagal mengirim data dari antrean:', error);
-                        showToast('Gagal sinkronisasi, akan dicoba lagi nanti.', 'error');
+                        console.error(`Gagal mengirim data dari antrean [${type}]:`, error);
+                        showToast(`Gagal sinkronisasi data ${type}. Akan dicoba lagi nanti.`, 'error');
+                        // Hentikan pemrosesan antrean ini jika terjadi kesalahan
                         localStorage.setItem(`submissionQueue${type}`, JSON.stringify(queue));
-                        return processedCount; 
+                        return processedCount;
                     }
                 }
+                
                 localStorage.setItem(`submissionQueue${type}`, JSON.stringify(queue));
                 if (processedCount > 0) {
                     showToast(`${processedCount} data ${type.toLowerCase()} berhasil disinkronkan.`, 'success');
@@ -610,7 +613,6 @@
 
             try {
                 const processedKirim = await processQueue(queueKirim, scriptURLKirim, 'Kirim');
-                // [FIX] Menambahkan parameter scriptURLTerima yang hilang
                 const processedTerima = await processQueue(queueTerima, scriptURLTerima, 'Terima');
 
                 if (processedKirim > 0 || processedTerima > 0) {
@@ -1247,4 +1249,3 @@
     </script>
 </body>
 </html>
-" and am asking a follow up questi
