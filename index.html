@@ -33,7 +33,7 @@
             input[type="number"],
             input[type="date"],
             input[type="search"],
-            input[type="tel"], /* Ditambahkan untuk mencakup tipe baru */
+            input[type="tel"],
             select,
             textarea {
                 font-size: 16px !important;
@@ -406,8 +406,9 @@
     
     <script type="module">
         // --- URL SPREADSHEET (PENTING!) ---
-        const scriptURLKirim = 'https://script.google.com/macros/s/AKfycbxHcnrmAaPT670DdQUEKdIwQUtXgxp2SCcOSoKRigQg8hGbJvuR14Eazc51levPU0KCww/exec'; 
-        const scriptURLTerima = 'https://script.google.com/macros/s/AKfycbzp3B-Dgs1oVijUqJjXxB1cDBpJbxKHABpPfTGqZkfPddd8oAIv8xRP19-4h8F-KZb4/exec'; 
+        // [PERUBAHAN] URL SCRIPT TELAH DIPERBARUI DENGAN LINK BARU DARI ANDA
+        const scriptURLKirim = 'https://script.google.com/macros/s/AKfycbz9oIGTO722d9GFVhcn7D1DonzGpqXvxI0WgqjtQUvyBWpKSKy7AnaSmuBKjTHGSxHkRQ/exec'; 
+        const scriptURLTerima = 'https://script.google.com/macros/s/AKfycbwguuJ92Npwy_3ip8HKHkZpRWA-lgNmMbKRXPEXy2WKqiiv-DVQZHpDvqA0TqouobvW/exec'; 
 
         // --- Elemen Global ---
         const loginScreen = document.getElementById('login-screen');
@@ -577,7 +578,6 @@
 
             isSending = true;
 
-            // [FIX] Logika pemrosesan antrean diperbaiki untuk mencegah refresh berulang
             const processQueue = async (queue, url, type) => {
                 let processedCount = 0;
                 while (queue.length > 0) {
@@ -598,7 +598,6 @@
                     } catch (error) {
                         console.error(`Gagal mengirim data dari antrean [${type}]:`, error);
                         showToast(`Gagal sinkronisasi data ${type}. Akan dicoba lagi nanti.`, 'error');
-                        // Hentikan pemrosesan antrean ini jika terjadi kesalahan
                         localStorage.setItem(`submissionQueue${type}`, JSON.stringify(queue));
                         return processedCount;
                     }
@@ -785,46 +784,30 @@
             filterAndRender(allDataKirim, 'kirim');
             filterAndRender(allDataTerima, 'terima');
         };
-
-        // ====================================================================================
-        // [BARU] FUNGSI UNTUK MEMBUAT "SIDIK JARI" UNIK DARI DATA SUBMISSION
-        // ====================================================================================
+        
         const createSubmissionFingerprint = (commonData, items) => {
             const normalizedBpb = String(commonData['No BPB'] || '').trim().toUpperCase();
             const normalizedTujuan = normalizeTujuan(commonData.Tujuan);
-
-            // Urutkan item berdasarkan kode barang untuk memastikan urutan tidak mempengaruhi sidik jari
             const sortedItems = [...items].sort((a, b) => {
                 const codeA = String(a['Kode Barang'] || '').trim().toUpperCase();
                 const codeB = String(b['Kode Barang'] || '').trim().toUpperCase();
                 return codeA.localeCompare(codeB);
             });
-
-            // Buat string representasi dari item
             const itemsString = sortedItems.map(item => {
                 const code = String(item['Kode Barang'] || '').trim().toUpperCase();
                 const qty = parseInt(item['Jumlah']) || 0;
                 return `${code}:${qty}`;
             }).join(',');
-
             return `${normalizedBpb}|${normalizedTujuan}|${itemsString}`;
         };
-
-        // ====================================================================================
-        // [BARU] FUNGSI UNTUK MEMERIKSA DUPLIKAT BERDASARKAN SIDIK JARI
-        // ====================================================================================
+        
         const isDuplicateSubmission = (fingerprint, type) => {
             const sourceData = type === 'kirim' ? allDataKirim : allDataTerima;
             const queueKey = type === 'kirim' ? 'submissionQueueKirim' : 'submissionQueueTerima';
             const queue = JSON.parse(localStorage.getItem(queueKey) || '[]');
-
-            // 1. Cek di antrean (local storage)
             if (queue.some(item => item.fingerprint === fingerprint)) {
                 return true;
             }
-
-            // 2. Cek di data dari server
-            // Kelompokkan data server berdasarkan No BPB dan Tujuan
             const groupedData = sourceData.reduce((acc, row) => {
                 const bpb = String(row['No BPB'] || '').trim().toUpperCase();
                 const tujuan = normalizeTujuan(row.Tujuan);
@@ -842,8 +825,6 @@
                 });
                 return acc;
             }, {});
-
-            // Buat sidik jari untuk setiap grup dan bandingkan
             for (const key in groupedData) {
                 const existingFingerprint = createSubmissionFingerprint(
                     groupedData[key].commonData,
@@ -853,21 +834,24 @@
                     return true;
                 }
             }
-
             return false;
         };
-
+        
         function handleFormSubmit(form) {
             if (isSubmitting) {
-                console.log("Submission already in progress. Ignoring click.");
+                console.warn("Submission attempt ignored: another is in progress.");
                 return;
             }
+
+            const submissionId = `SUB-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+            console.log(`Starting submission with ID: ${submissionId}`);
 
             const submitButton = form.querySelector('.submit-button');
             
             try {
                 isSubmitting = true;
-                submitButton.disabled = true; // Langsung disable tombol
+                submitButton.disabled = true;
+                submitButton.textContent = 'MENGIRIM...'; 
 
                 const itemRows = form.querySelectorAll('.item-row');
                 const items = Array.from(itemRows).map(row => ({
@@ -877,9 +861,7 @@
 
                 if (items.length === 0) {
                     showToast('Harap isi setidaknya satu item barang.', 'warning');
-                    isSubmitting = false;
-                    submitButton.disabled = false;
-                    return;
+                    throw new Error("No items to submit."); 
                 }
                 
                 const isKirimForm = form.id === 'form-kirim';
@@ -891,29 +873,17 @@
                     Keterangan: document.getElementById(isKirimForm ? 'keterangan-kirim' : 'keterangan-terima').value,
                 };
 
-                // ====================================================================================
-                // [PERUBAHAN UTAMA] LOGIKA ANTI-DUPLIKAT DITERAPKAN DI SINI
-                // ====================================================================================
+                commonData.SubmissionID = submissionId;
+
                 if (isAntiDuplicateOn) {
                     const fingerprint = createSubmissionFingerprint(commonData, items);
-                    const isDuplicate = isDuplicateSubmission(fingerprint, isKirimForm ? 'kirim' : 'terima');
-
-                    if (isDuplicate) {
+                    if (isDuplicateSubmission(fingerprint, isKirimForm ? 'kirim' : 'terima')) {
                         showToast('Data ini sudah pernah dikirim sebelumnya.', 'error');
-                        if (isAudioReady) {
-                            const now = Tone.now();
-                            synth.triggerAttackRelease("C4", "8n", now);
-                        }
-                        // Kembalikan state seperti semula dan hentikan proses
-                        isSubmitting = false;
-                        submitButton.disabled = false;
-                        return; // HENTIKAN FUNGSI DI SINI
+                        if (isAudioReady) { synth.triggerAttackRelease("C4", "8n", Tone.now()); }
+                        throw new Error("Duplicate submission detected."); 
                     }
                 }
-                // ====================================================================================
-                // AKHIR DARI BLOK PERUBAHAN
-                // ====================================================================================
-
+                
                 const itemCodesList = document.getElementById('item-codes-list');
                 items.forEach(item => {
                     const newCode = String(item["Kode Barang"] || '').trim().toUpperCase();
@@ -930,8 +900,8 @@
                 
                 const queueKey = isKirimForm ? 'submissionQueueKirim' : 'submissionQueueTerima';
                 const queue = JSON.parse(localStorage.getItem(queueKey) || '[]');
-                const logDetails = `Submit form ${form.id} with ${items.length} item.`;
-                const submissionFingerprint = createSubmissionFingerprint(commonData, items); // Buat sidik jari untuk disimpan
+                const logDetails = `Submit form ${form.id} with ${items.length} items. ID: ${submissionId}`;
+                const submissionFingerprint = createSubmissionFingerprint(commonData, items);
                 
                 queue.push({ data: newRowDataCommon, items: items, logDetails: logDetails, fingerprint: submissionFingerprint });
                 localStorage.setItem(queueKey, JSON.stringify(queue));
@@ -943,36 +913,33 @@
                     synth.triggerAttackRelease("A5", "8n", now + 0.12);
                 }
 
-                // [FIX] Tambahkan data ke state lokal secara optimis untuk mencegah race condition
                 const targetArray = isKirimForm ? allDataKirim : allDataTerima;
                 items.forEach(item => {
-                    const newRow = {
-                        'Tanggal': commonData.Tanggal,
-                        'No BPB': commonData['No BPB'],
-                        'Tujuan': commonData.Tujuan,
-                        'Nama Pengirim': isKirimForm ? commonData.Nama : undefined,
-                        'Nama Penerima': !isKirimForm ? commonData.Nama : undefined,
+                    targetArray.push({
+                        ...newRowDataCommon,
                         'Kode Barang': item['Kode Barang'],
                         'Jumlah': item.Jumlah,
-                        'Keterangan': commonData.Keterangan
-                    };
-                    targetArray.push(newRow);
+                    });
                 });
 
-                // Terapkan filter untuk segera menampilkan data baru di tabel
                 applyFilters();
-                
                 form.reset();
                 clearLocalStorage(form.id);
                 loadFormData(form.id);
                 
                 processSubmissionQueue();
 
+            } catch (error) {
+                if (error.message !== "No items to submit." && error.message !== "Duplicate submission detected.") {
+                    console.error("Submission error:", error);
+                    showToast('Terjadi kesalahan saat memproses data.', 'error');
+                }
             } finally {
                 setTimeout(() => {
                     isSubmitting = false;
                     submitButton.disabled = false;
-                }, 500); // Beri jeda sedikit sebelum tombol aktif kembali
+                    submitButton.textContent = form.id === 'form-kirim' ? 'Kirim Semua Data' : 'Terima Semua Data';
+                }, 500);
             }
         }
 
@@ -1234,7 +1201,7 @@
                 checkBreakTime();
                 setInterval(checkBreakTime, 30000);
             } else {
-                loginError.classList.add('hidden');
+                loginError.classList.remove('hidden');
             }
         });
 
