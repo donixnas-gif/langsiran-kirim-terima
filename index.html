@@ -406,7 +406,6 @@
     
     <script type="module">
         // --- URL SPREADSHEET (PENTING!) ---
-        // [PERUBAHAN] URL SCRIPT TELAH DIPERBARUI DENGAN LINK BARU DARI ANDA
         const scriptURLKirim = 'https://script.google.com/macros/s/AKfycbz9oIGTO722d9GFVhcn7D1DonzGpqXvxI0WgqjtQUvyBWpKSKy7AnaSmuBKjTHGSxHkRQ/exec'; 
         const scriptURLTerima = 'https://script.google.com/macros/s/AKfycbwguuJ92Npwy_3ip8HKHkZpRWA-lgNmMbKRXPEXy2WKqiiv-DVQZHpDvqA0TqouobvW/exec'; 
 
@@ -566,6 +565,10 @@
             });
         };
 
+        // ===================================================================
+        // [PERBAIKAN FINAL] Fungsi ini diubah agar tidak me-refresh data dari server
+        // setelah pengiriman berhasil, untuk mencegah duplikasi visual.
+        // ===================================================================
         async function processSubmissionQueue() {
             if (isSending) return;
 
@@ -593,13 +596,13 @@
                         const result = await response.json();
                         if (result.result !== 'success') throw new Error(result.error || 'Unknown server error');
                         
-                        queue.shift(); // Hapus dari antrean hanya jika berhasil
+                        queue.shift();
                         processedCount++;
                     } catch (error) {
                         console.error(`Gagal mengirim data dari antrean [${type}]:`, error);
                         showToast(`Gagal sinkronisasi data ${type}. Akan dicoba lagi nanti.`, 'error');
                         localStorage.setItem(`submissionQueue${type}`, JSON.stringify(queue));
-                        return processedCount;
+                        return processedCount; // Hentikan jika ada error
                     }
                 }
                 
@@ -611,12 +614,9 @@
             };
 
             try {
-                const processedKirim = await processQueue(queueKirim, scriptURLKirim, 'Kirim');
-                const processedTerima = await processQueue(queueTerima, scriptURLTerima, 'Terima');
-
-                if (processedKirim > 0 || processedTerima > 0) {
-                    await loadInitialView();
-                }
+                await processQueue(queueKirim, scriptURLKirim, 'Kirim');
+                await processQueue(queueTerima, scriptURLTerima, 'Terima');
+                // Panggilan ke loadInitialView() DIHAPUS dari sini untuk mencegah duplikasi visual.
             } finally {
                 isSending = false;
             }
