@@ -15,6 +15,10 @@
     
     <!-- Memuat Tone.js untuk efek suara interaktif -->
     <script src="https://cdnjs.cloudflare.com/ajax/libs/tone/14.7.77/Tone.js"></script>
+    
+    <!-- Icon Library -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.2/css/all.min.css">
+
 
     <style>
         /* Mencegah 'pull-to-refresh' dan scroll chaining pada mobile */
@@ -24,6 +28,7 @@
         body { 
             font-family: 'Inter', sans-serif; 
             overscroll-behavior-y: contain;
+            transition: background 0.5s ease-in-out;
         }
         
         /* Mencegah zoom otomatis saat mengisi form di mobile */
@@ -89,27 +94,26 @@
         }
     </style>
 </head>
-<body class="bg-gray-900 text-gray-200">
+<body class="text-gray-200">
 
     <!-- Login Screen -->
-    <div id="login-screen" class="min-h-screen flex items-center justify-center bg-gray-900 p-4">
-        <div class="w-full max-w-md bg-gray-800 p-8 rounded-2xl shadow-2xl">
-            <h1 class="text-3xl font-bold text-center text-white mb-2">Selamat Datang</h1>
-            <p class="text-center text-gray-400 mb-8">Silakan login untuk melanjutkan</p>
+    <div id="login-screen" class="min-h-screen flex items-center justify-center bg-gradient-to-br from-sky-400 to-blue-600 p-4">
+        <div class="w-full max-w-sm bg-black/20 backdrop-blur-md border-2 border-white/30 p-8 rounded-2xl shadow-2xl">
+            <h1 class="text-3xl font-bold text-center text-white mb-8 text-shadow-strong">Login</h1>
             <form id="login-form" class="space-y-6">
-                <div>
-                    <label for="role-select" class="block mb-2 text-sm font-medium text-gray-300">Pilih Peran (Username)</label>
-                    <select id="role-select" class="bg-gray-700 border border-gray-600 text-white text-sm rounded-lg focus:ring-blue-500 focus:border-blue-500 block w-full p-3">
-                        <option value="kirim">BAGIAN KIRIM LANGSIR</option>
-                        <option value="terima">BAGIAN TERIMA LANGSIR</option>
+                <div class="relative">
+                    <i class="fa fa-user absolute left-4 top-1/2 -translate-y-1/2 text-white/50"></i>
+                    <select id="role-select" class="bg-black/30 border-2 border-white/30 text-white text-sm rounded-lg focus:ring-sky-500 focus:border-sky-500 block w-full pl-12 p-3 appearance-none">
+                        <option class="text-black" value="kirim">BAGIAN KIRIM LANGSIR</option>
+                        <option class="text-black" value="terima">BAGIAN TERIMA LANGSIR</option>
                     </select>
                 </div>
-                <div>
-                    <label for="password" class="block mb-2 text-sm font-medium text-gray-300">Password</label>
-                    <input type="password" id="password" class="bg-gray-700 border border-gray-600 text-white text-sm rounded-lg focus:ring-blue-500 focus:border-blue-500 block w-full p-3" required>
+                <div class="relative">
+                    <i class="fa fa-lock absolute left-4 top-1/2 -translate-y-1/2 text-white/50"></i>
+                    <input type="password" id="password" class="bg-black/30 border-2 border-white/30 text-white text-sm rounded-lg focus:ring-sky-500 focus:border-sky-500 block w-full pl-12 p-3" placeholder="Password" required>
                 </div>
-                <p id="login-error" class="text-red-400 text-sm text-center hidden">Password atau peran salah.</p>
-                <button type="submit" class="w-full text-white bg-blue-600 hover:bg-blue-700 focus:ring-4 focus:outline-none focus:ring-blue-800 font-semibold rounded-lg text-md px-5 py-3 text-center transition-colors duration-300">Login</button>
+                <p id="login-error" class="text-red-300 text-sm text-center hidden">Password atau peran salah.</p>
+                <button type="submit" class="w-full text-blue-800 bg-sky-300 hover:bg-sky-400 focus:ring-4 focus:outline-none focus:ring-sky-200 font-semibold rounded-lg text-md px-5 py-3 text-center transition-colors duration-300">LOGIN</button>
             </form>
         </div>
     </div>
@@ -959,22 +963,20 @@
         }
         
         const resetAppState = () => {
-            // Sembunyikan kontainer aplikasi dan tampilkan layar login
             appContainer.classList.add('hidden');
             loginScreen.classList.remove('hidden');
+            document.body.classList.add('login-background');
+            document.body.classList.remove('bg-gray-900');
 
-            // Reset form login
             loginForm.reset();
             document.getElementById('password').value = '';
             loginError.classList.add('hidden');
 
-            // Hentikan interval pengecekan istirahat
             if (breakCheckInterval) {
                 clearInterval(breakCheckInterval);
                 breakCheckInterval = null;
             }
 
-            // Reset variabel global untuk sesi berikutnya
             currentUserRole = null;
             allDataKirim = [];
             allDataTerima = [];
@@ -1107,6 +1109,8 @@
 
             loginScreen.classList.add('hidden');
             appContainer.classList.remove('hidden');
+            document.body.classList.remove('login-background');
+            document.body.classList.add('bg-gray-900');
 
             const savedAntiDuplicate = localStorage.getItem('isAntiDuplicateOn');
             isAntiDuplicateOn = savedAntiDuplicate === null ? true : (savedAntiDuplicate === 'true');
@@ -1121,6 +1125,9 @@
             processSubmissionQueue();
             checkBreakTime();
             breakCheckInterval = setInterval(checkBreakTime, 30000);
+        } else {
+            document.body.classList.add('login-background');
+            document.body.classList.remove('bg-gray-900');
         }
 
         loginForm.addEventListener('submit', (e) => {
@@ -1143,6 +1150,8 @@
 
                 loginScreen.classList.add('hidden');
                 appContainer.classList.remove('hidden');
+                document.body.classList.remove('login-background');
+                document.body.classList.add('bg-gray-900');
                 loginError.classList.add('hidden');
                 
                 setupUIForRole(currentUserRole);
