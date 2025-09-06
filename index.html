@@ -1159,6 +1159,13 @@
             const password = document.getElementById('password').value;
             
             if (userCredentials[role] && userCredentials[role].password === password) {
+                if(isAudioReady) {
+                    const now = Tone.now();
+                    // Suara notifikasi 'Ting Tung'
+                    synth.triggerAttackRelease("C6", "16n", now);
+                    synth.triggerAttackRelease("G5", "16n", now + 0.15);
+                }
+                
                 currentUserRole = role;
                 
                 const loginData = { role: currentUserRole };
