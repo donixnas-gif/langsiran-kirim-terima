@@ -87,62 +87,6 @@
         #break-notification.show {
             transform: translateX(0) translateY(-50%);
         }
-
-        /* --- GAYA CETAK --- */
-        @media print {
-            body * {
-                visibility: hidden;
-            }
-            #print-area, #print-area * {
-                visibility: visible;
-            }
-            #print-area {
-                position: absolute;
-                left: 0;
-                top: 0;
-                width: 100%;
-            }
-            body, #print-area {
-                background: white !important;
-                color: black !important;
-                font-size: 10pt;
-            }
-            #print-area * {
-                background-color: transparent !important;
-                color: inherit !important;
-                box-shadow: none !important;
-                text-shadow: none !important;
-                border-color: #000 !important;
-            }
-            .no-print {
-                display: none !important;
-            }
-            .print-header {
-                text-align: center;
-                margin-bottom: 20px;
-                border-bottom: 2px solid #000 !important;
-                padding-bottom: 10px;
-            }
-            .print-header h1 { font-size: 18pt; margin: 0; }
-            .print-header p { font-size: 10pt; margin: 4px 0 0; }
-            table {
-                width: 100%;
-                border-collapse: collapse;
-                font-size: 9pt;
-            }
-            thead {
-                display: table-header-group;
-            }
-            thead th {
-                background-color: #f2f2f2 !important;
-                -webkit-print-color-adjust: exact !important;
-                color-adjust: exact !important;
-            }
-            th, td {
-                border: 1px solid #000 !important;
-                padding: 6px;
-            }
-        }
     </style>
 </head>
 <body class="bg-gray-900 text-gray-200">
@@ -318,10 +262,6 @@
                     <div class="flex justify-between items-center mb-4">
                         <h2 class="text-lg sm:text-xl font-bold text-white">Data Pengiriman Hari Ini</h2>
                         <div class="flex items-center space-x-2">
-                            <!-- Tombol cetak/ekspor PDF -->
-                            <button id="print-kirim-btn" title="Cetak/Ekspor PDF" class="text-gray-400 hover:text-white transition-colors p-1 rounded-full">
-                                <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 17h2a2 2 0 002-2v-4a2 2 0 00-2-2H5a2 2 0 00-2 2v4a2 2 0 002 2h2m2 4h6a2 2 0 002-2v-4a2 2 0 00-2-2H9a2 2 0 00-2 2v4a2 2 0 002 2zm8-12V5a2 2 0 00-2-2H9a2 2 0 00-2 2v4h10z" /></svg>
-                            </button>
                             <!-- Tombol muat ulang data -->
                             <button id="refresh-kirim-btn" title="Muat Ulang Data" class="text-gray-400 hover:text-white transition-colors p-1 rounded-full">
                                 <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h5M20 20v-5h-5M20 4h-5v5M4 20h5v-5"></path><path d="M21 12a9 9 0 1 1-9-9 9.75 9.75 0 0 1 6.74 2.74L21 8"></path></svg>
@@ -356,10 +296,6 @@
                         <div class="flex justify-between items-center mb-4">
                         <h2 class="text-lg sm:text-xl font-bold text-white">Data Penerimaan Hari Ini</h2>
                         <div class="flex items-center space-x-2">
-                            <!-- Tombol cetak/ekspor PDF -->
-                            <button id="print-terima-btn" title="Cetak/Ekspor PDF" class="text-gray-400 hover:text-white transition-colors p-1 rounded-full">
-                                <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 17h2a2 2 0 002-2v-4a2 2 0 00-2-2H5a2 2 0 00-2 2v4a2 2 0 002 2h2m2 4h6a2 2 0 002-2v-4a2 2 0 00-2-2H9a2 2 0 00-2 2v4a2 2 0 002 2zm8-12V5a2 2 0 00-2-2H9a2 2 0 00-2 2v4h10z" /></svg>
-                            </button>
                             <!-- Tombol muat ulang data -->
                             <button id="refresh-terima-btn" title="Muat Ulang Data" class="text-gray-400 hover:text-white transition-colors p-1 rounded-full">
                                 <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h5M20 20v-5h-5M20 4h-5v5M4 20h5v-5"></path><path d="M21 12a9 9 0 1 1-9-9 9.75 9.75 0 0 1 6.74 2.74L21 8"></path></svg>
@@ -437,6 +373,7 @@
         let debouncedSaveKirim, debouncedSaveTerima;
         let isSending = false;
         let hasShownBreakNotification = false;
+        let breakCheckInterval = null;
 
         // --- Kredensial Pengguna ---
         const userCredentials = {
@@ -565,10 +502,6 @@
             });
         };
 
-        // ===================================================================
-        // [PERBAIKAN FINAL] Fungsi ini diubah agar tidak me-refresh data dari server
-        // setelah pengiriman berhasil, untuk mencegah duplikasi visual.
-        // ===================================================================
         async function processSubmissionQueue() {
             if (isSending) return;
 
@@ -602,7 +535,7 @@
                         console.error(`Gagal mengirim data dari antrean [${type}]:`, error);
                         showToast(`Gagal sinkronisasi data ${type}. Akan dicoba lagi nanti.`, 'error');
                         localStorage.setItem(`submissionQueue${type}`, JSON.stringify(queue));
-                        return processedCount; // Hentikan jika ada error
+                        return processedCount; 
                     }
                 }
                 
@@ -616,7 +549,6 @@
             try {
                 await processQueue(queueKirim, scriptURLKirim, 'Kirim');
                 await processQueue(queueTerima, scriptURLTerima, 'Terima');
-                // Panggilan ke loadInitialView() DIHAPUS dari sini untuk mencegah duplikasi visual.
             } finally {
                 isSending = false;
             }
@@ -751,12 +683,11 @@
         };
 
         const applyFilters = () => {
-            const todayString = getLocalDateString(new Date().toISOString());
-            
             const filterAndRender = (sourceData, type) => {
                 const bpbFilter = document.getElementById(`filter-bpb-${type}`).value.toUpperCase();
                 const kodeFilter = document.getElementById(`filter-kode-${type}`).value.toUpperCase();
-                
+                const todayString = getLocalDateString(new Date().toISOString());
+
                 let todayData = sourceData.filter(row => getLocalDateString(row.Tanggal) === todayString);
 
                 let filteredData = todayData;
@@ -847,11 +778,16 @@
             console.log(`Starting submission with ID: ${submissionId}`);
 
             const submitButton = form.querySelector('.submit-button');
+            const originalButtonHTML = submitButton.innerHTML;
             
             try {
                 isSubmitting = true;
                 submitButton.disabled = true;
-                submitButton.textContent = 'MENGIRIM...'; 
+                submitButton.innerHTML = `
+                    <svg class="h-5 w-5 mr-2" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor">
+                        <path stroke-linecap="round" stroke-linejoin="round" d="M18.364 18.364A9 9 0 005.636 5.636m12.728 12.728A9 9 0 015.636 5.636m12.728 12.728L5.636 5.636" />
+                    </svg>
+                    MENGIRIM...`;
 
                 const itemRows = form.querySelectorAll('.item-row');
                 const items = Array.from(itemRows).map(row => ({
@@ -909,8 +845,11 @@
                 showToast('Data ditambahkan ke antrean pengiriman.', 'success');
                 if (isAudioReady) {
                     const now = Tone.now();
-                    synth.triggerAttackRelease("E5", "8n", now);
-                    synth.triggerAttackRelease("A5", "8n", now + 0.12);
+                    // Suara notifikasi 'happy' yang baru
+                    synth.triggerAttackRelease("G5", "16n", now);
+                    synth.triggerAttackRelease("A5", "16n", now + 0.1);
+                    synth.triggerAttackRelease("C6", "16n", now + 0.2);
+                    synth.triggerAttackRelease("E6", "16n", now + 0.3);
                 }
 
                 const targetArray = isKirimForm ? allDataKirim : allDataTerima;
@@ -938,7 +877,7 @@
                 setTimeout(() => {
                     isSubmitting = false;
                     submitButton.disabled = false;
-                    submitButton.textContent = form.id === 'form-kirim' ? 'Kirim Semua Data' : 'Terima Semua Data';
+                    submitButton.innerHTML = originalButtonHTML;
                 }, 500);
             }
         }
@@ -999,23 +938,6 @@
         const clearLocalStorage = (formId) => {
             localStorage.removeItem(formId);
         };
-
-        const handlePrint = (tableId, title) => {
-            const printArea = document.createElement('div');
-            printArea.id = 'print-area';
-
-            const header = `<div class="print-header"><h1>${title}</h1><p>Dicetak pada: ${new Date().toLocaleString('id-ID')}</p></div>`;
-            
-            const tableToPrint = document.getElementById(tableId).cloneNode(true);
-            tableToPrint.querySelectorAll('.no-print').forEach(el => el.remove());
-
-            printArea.innerHTML = header + tableToPrint.outerHTML;
-            document.body.appendChild(printArea);
-
-            window.print();
-
-            document.body.removeChild(printArea);
-        };
         
         function checkBreakTime() {
             const now = new Date();
@@ -1035,6 +957,30 @@
                 hasShownBreakNotification = false;
             }
         }
+        
+        const resetAppState = () => {
+            // Sembunyikan kontainer aplikasi dan tampilkan layar login
+            appContainer.classList.add('hidden');
+            loginScreen.classList.remove('hidden');
+
+            // Reset form login
+            loginForm.reset();
+            document.getElementById('password').value = '';
+            loginError.classList.add('hidden');
+
+            // Hentikan interval pengecekan istirahat
+            if (breakCheckInterval) {
+                clearInterval(breakCheckInterval);
+                breakCheckInterval = null;
+            }
+
+            // Reset variabel global untuk sesi berikutnya
+            currentUserRole = null;
+            allDataKirim = [];
+            allDataTerima = [];
+            sortStates = {};
+        };
+
 
         const setupEventListeners = () => {
             formKirim.addEventListener('click', (e) => {
@@ -1114,7 +1060,9 @@
                 debouncedSaveTerima = debounce(() => saveFormData('form-terima'), saveDelay);
                 debouncedApplyFilters = debounce(applyFilters, filterDelay);
 
-                document.querySelectorAll('.table-filter').forEach(input => input.addEventListener('input', debouncedApplyFilters));
+                document.querySelectorAll('.table-filter').forEach(input => {
+                    input.addEventListener('input', debouncedApplyFilters);
+                });
                 formKirim.addEventListener('input', debouncedSaveKirim);
                 formTerima.addEventListener('input', debouncedSaveTerima);
             };
@@ -1136,9 +1084,12 @@
                     e.target.setSelectionRange(start, end);
                 }
             });
-
-            document.getElementById('print-kirim-btn').addEventListener('click', () => handlePrint('table-kirim', 'Laporan Pengiriman Hari Ini'));
-            document.getElementById('print-terima-btn').addEventListener('click', () => handlePrint('table-terima', 'Laporan Penerimaan Hari Ini'));
+            
+            logoutBtn.addEventListener('click', () => {
+                localStorage.removeItem('userLoginData');
+                localStorage.removeItem('isAntiDuplicateOn');
+                resetAppState();
+            });
         };
 
         document.body.addEventListener('click', async () => {
@@ -1169,7 +1120,7 @@
             loadInitialView();
             processSubmissionQueue();
             checkBreakTime();
-            setInterval(checkBreakTime, 30000);
+            breakCheckInterval = setInterval(checkBreakTime, 30000);
         }
 
         loginForm.addEventListener('submit', (e) => {
@@ -1193,22 +1144,17 @@
                 loginScreen.classList.add('hidden');
                 appContainer.classList.remove('hidden');
                 loginError.classList.add('hidden');
+                
                 setupUIForRole(currentUserRole);
                 
                 loadFormData(currentUserRole === 'kirim' ? 'form-kirim' : 'form-terima');
                 loadInitialView();
                 processSubmissionQueue();
                 checkBreakTime();
-                setInterval(checkBreakTime, 30000);
+                breakCheckInterval = setInterval(checkBreakTime, 30000);
             } else {
-                loginError.classList.remove('hidden');
+                loginError.classList.add('hidden');
             }
-        });
-
-        logoutBtn.addEventListener('click', () => {
-            localStorage.removeItem('userLoginData');
-            localStorage.removeItem('isAntiDuplicateOn');
-            window.location.reload();
         });
 
         setupEventListeners();
@@ -1216,3 +1162,4 @@
     </script>
 </body>
 </html>
+
