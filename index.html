@@ -138,6 +138,14 @@
         
         <!-- Header with Logout Button and Toggles -->
         <div class="fixed top-4 right-4 z-50 flex items-center gap-4 no-print">
+             <!-- SYNC STATUS INDICATOR -->
+             <div id="sync-status-container" class="flex items-center space-x-2 bg-gray-800/50 backdrop-blur-sm p-2 rounded-full text-sm font-medium">
+                <span id="sync-icon"></span>
+                <span id="sync-text"></span>
+                <button id="manual-sync-btn" class="hidden" title="Coba Sinkronisasi Ulang">
+                    <i class="fa-solid fa-arrows-rotate text-white"></i>
+                </button>
+            </div>
              <!-- Fitur Anti Duplikat -->
             <div class="flex items-center space-x-2 bg-gray-800/50 backdrop-blur-sm p-2 rounded-full">
                 <label for="anti-duplicate-toggle" id="anti-duplicate-label" class="flex items-center cursor-pointer">
@@ -168,7 +176,7 @@
         </div>
 
         <!-- Kontainer utama aplikasi -->
-        <div class="w-full max-w-5xl mx-auto pt-16 sm:pt-0">
+        <div class="w-full max-w-5xl mx-auto pt-24 sm:pt-0">
             
             <!-- Kontainer Form Input -->
             <div class="bg-gray-800 p-4 sm:p-8 rounded-2xl shadow-2xl mb-8">
@@ -179,7 +187,10 @@
                     <form name="form-kirim" id="form-kirim" class="space-y-6">
                         <div class="grid md:grid-cols-2 gap-6">
                             <div><label for="tanggal-kirim" class="block mb-2 text-sm font-medium text-gray-300">Tanggal</label><input type="date" id="tanggal-kirim" class="bg-gray-700 border border-gray-600 text-white text-sm rounded-lg focus:ring-blue-500 focus:border-blue-500 block w-full p-3" required></div>
-                            <div><label for="no_bpb-kirim" class="block mb-2 text-sm font-medium text-gray-300">No. BPB</label><input type="tel" id="no_bpb-kirim" inputmode="numeric" placeholder="Contoh: BPB/2024/VII/001" class="auto-uppercase bg-gray-700 border border-gray-600 text-white text-sm rounded-lg focus:ring-blue-500 focus:border-blue-500 block w-full p-3" required></div>
+                            <div>
+                                <label for="no_bpb-kirim" class="block mb-2 text-sm font-medium text-gray-300">No. BPB</label>
+                                <input type="tel" id="no_bpb-kirim" inputmode="numeric" placeholder="Contoh: BPB/2024/VII/001" class="auto-uppercase bg-gray-700 border border-gray-600 text-white text-sm rounded-lg focus:ring-blue-500 focus:border-blue-500 block w-full p-3" required>
+                            </div>
                         </div>
                         <div class="grid md:grid-cols-2 gap-6">
                             <div>
@@ -229,7 +240,10 @@
                     <form name="form-terima" id="form-terima" class="space-y-6">
                         <div class="grid md:grid-cols-2 gap-6">
                             <div><label for="tanggal-terima" class="block mb-2 text-sm font-medium text-gray-300">Tanggal</label><input type="date" id="tanggal-terima" class="bg-gray-700 border border-gray-600 text-white text-sm rounded-lg focus:ring-blue-500 focus:border-blue-500 block w-full p-3" required></div>
-                            <div><label for="no_bpb-terima" class="block mb-2 text-sm font-medium text-gray-300">No. BPB</label><input type="tel" id="no_bpb-terima" inputmode="numeric" placeholder="Contoh: BPB/2024/VII/001" class="auto-uppercase bg-gray-700 border border-gray-600 text-white text-sm rounded-lg focus:ring-blue-500 focus:border-blue-500 block w-full p-3" required></div>
+                             <div>
+                                <label for="no_bpb-terima" class="block mb-2 text-sm font-medium text-gray-300">No. BPB</label>
+                                <input type="tel" id="no_bpb-terima" inputmode="numeric" placeholder="Contoh: BPB/2024/VII/001" class="auto-uppercase bg-gray-700 border border-gray-600 text-white text-sm rounded-lg focus:ring-blue-500 focus:border-blue-500 block w-full p-3" required>
+                            </div>
                         </div>
                         <div class="grid md:grid-cols-2 gap-6">
                            <div>
@@ -393,7 +407,15 @@
         let isSending = false;
         let hasShownBreakNotification = false;
         let breakCheckInterval = null;
+        let resyncInterval = null;
 
+        // --- Sync Status Logic ---
+        let syncStatus = 'syncing'; // 'syncing', 'synced', 'offline'
+        const syncStatusContainer = document.getElementById('sync-status-container');
+        const syncIcon = document.getElementById('sync-icon');
+        const syncText = document.getElementById('sync-text');
+        const manualSyncBtn = document.getElementById('manual-sync-btn');
+        
         // --- Kredensial Pengguna ---
         const userCredentials = {
             kirim: { username: 'shinpo01', password: 'shinpo01' },
@@ -423,23 +445,12 @@
         const advancedNormalizeItemCode = (code) => {
             if (!code) return '';
             let normalized = String(code).toLowerCase();
-            
-            const replacements = { 
-                'hjmd': 'hmd', 
-                'ugmd': 'umd', 
-                'brmd': 'bmd', 
-                'belge': 'beige', 
-                'wmd': 'md', 
-                'warna': '',
-            };
-            
+            const replacements = { 'hjmd': 'hmd', 'ugmd': 'umd', 'brmd': 'bmd', 'belge': 'beige', 'wmd': 'md', 'warna': '' };
             const sortedKeys = Object.keys(replacements).sort((a, b) => b.length - a.length);
             for (const key of sortedKeys) {
                 normalized = normalized.replace(new RegExp(key, 'g'), replacements[key]);
             }
-            
             normalized = normalized.replace(/[^a-z0-9]/g, '');
-
             const wordsToRemove = ['ikea', 'mrdiy', 'polos'];
             wordsToRemove.forEach(word => {
                 normalized = normalized.replace(word, '');
@@ -489,29 +500,62 @@
                 toast.addEventListener('transitionend', () => toast.remove());
             }, 4000);
         };
+        
+        const updateSyncStatusUI = (status) => {
+            syncStatus = status;
+            syncStatusContainer.classList.remove('bg-green-500', 'bg-yellow-500', 'bg-red-500', 'text-white');
+            manualSyncBtn.classList.add('hidden');
+            syncIcon.classList.remove('fa-spin');
+
+            // --- BARU: Logika untuk mengunci tombol submit ---
+            const submitButtons = document.querySelectorAll('.submit-button');
+            const handleButtonState = (button, enable, text, icon, colorClass, hoverClass) => {
+                button.disabled = !enable;
+                button.innerHTML = icon ? `${icon} ${text}` : text;
+                button.classList.remove('bg-blue-600', 'hover:bg-blue-700', 'bg-green-600', 'hover:bg-green-700', 'bg-gray-500', 'cursor-not-allowed');
+                if (enable) {
+                    button.classList.add(colorClass, hoverClass);
+                } else {
+                    button.classList.add('bg-gray-500', 'cursor-not-allowed');
+                }
+            };
+
+            if (status === 'synced') {
+                syncStatusContainer.classList.add('bg-green-500', 'text-white');
+                syncIcon.innerHTML = `<i class="fa-solid fa-check-circle"></i>`;
+                syncText.textContent = 'Tersinkronisasi';
+                submitButtons.forEach(btn => {
+                    const isKirim = btn.closest('form').id.includes('kirim');
+                    handleButtonState(btn, true, isKirim ? 'Kirim Semua Data' : 'Terima Semua Data', '', isKirim ? 'bg-blue-600' : 'bg-green-600', isKirim ? 'hover:bg-blue-700' : 'hover:bg-green-700');
+                });
+            } else if (status === 'syncing') {
+                syncStatusContainer.classList.add('bg-yellow-500', 'text-white');
+                syncIcon.innerHTML = `<i class="fa-solid fa-cloud-arrow-up fa-spin"></i>`;
+                syncText.textContent = 'Menyinkronkan...';
+                submitButtons.forEach(btn => handleButtonState(btn, false, 'Menunggu Data...', '<svg class="animate-spin h-5 w-5 mr-3" viewBox="0 0 24 24"></svg>'));
+            } else { // offline
+                syncStatusContainer.classList.add('bg-red-500', 'text-white');
+                syncIcon.innerHTML = `<i class="fa-solid fa-triangle-exclamation"></i>`;
+                syncText.textContent = 'Offline';
+                manualSyncBtn.classList.remove('hidden');
+                submitButtons.forEach(btn => handleButtonState(btn, false, 'Koneksi Terputus', '<i class="fa-solid fa-wifi-slash mr-3"></i>'));
+            }
+        };
 
         const fetchData = async (scriptURL) => {
-            try {
-                const response = await fetch(scriptURL);
-                if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
-                const data = await response.json();
-                if (data.result === 'error') throw new Error(data.error);
-                return data.filter(row => row && typeof row.rowIndex !== 'undefined');
-            } catch (error) {
-                console.error(`Error fetching data from ${scriptURL}:`, error);
-                throw new Error(`Gagal mengambil data: ${error.message}`);
-            }
+            const response = await fetch(scriptURL);
+            if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
+            const data = await response.json();
+            if (data.result === 'error') throw new Error(data.error);
+            return data.filter(row => row && typeof row.rowIndex !== 'undefined');
         };
 
         const populateAutocomplete = () => {
             const itemCodesList = document.getElementById('item-codes-list');
             if (!itemCodesList) return;
-
             allDataKirim.forEach(row => allItemCodes.add(String(row['Kode Barang'] || '').trim().toUpperCase()));
             allDataTerima.forEach(row => allItemCodes.add(String(row['Kode Barang'] || '').trim().toUpperCase()));
-
             itemCodesList.innerHTML = '';
-
             allItemCodes.forEach(code => {
                 if (code) {
                     const option = document.createElement('option');
@@ -522,14 +566,12 @@
         };
 
         async function processSubmissionQueue() {
-            if (isSending) return;
+            if (isSending || syncStatus === 'offline') return;
 
             const queueKirim = JSON.parse(localStorage.getItem('submissionQueueKirim') || '[]');
             const queueTerima = JSON.parse(localStorage.getItem('submissionQueueTerima') || '[]');
 
-            if (queueKirim.length === 0 && queueTerima.length === 0) {
-                return;
-            }
+            if (queueKirim.length === 0 && queueTerima.length === 0) return;
 
             isSending = true;
 
@@ -554,6 +596,7 @@
                         console.error(`Gagal mengirim data dari antrean [${type}]:`, error);
                         showToast(`Gagal sinkronisasi data ${type}. Akan dicoba lagi nanti.`, 'error');
                         localStorage.setItem(`submissionQueue${type}`, JSON.stringify(queue));
+                        updateSyncStatusUI('offline');
                         return processedCount; 
                     }
                 }
@@ -605,7 +648,7 @@
             tableBody.innerHTML = '';
             
             if (data.length === 0) {
-                tableBody.innerHTML = `<tr><td colspan="8" class="text-center p-4">Tidak ada data yang cocok dengan filter.</td></tr>`;
+                tableBody.innerHTML = `<tr><td colspan="8" class="text-center p-4">Tidak ada data yang cocok.</td></tr>`;
                 return;
             }
             let totalJumlah = 0;
@@ -680,9 +723,8 @@
         };
 
         const loadInitialView = async () => {
-            showToast('Memuat data...', 'warning');
+            updateSyncStatusUI('syncing');
             document.querySelectorAll('[id^="refresh-"]').forEach(btn => btn.disabled = true);
-            
             showSkeletonLoader('table-body-kirim');
             showSkeletonLoader('table-body-terima');
 
@@ -693,9 +735,12 @@
                 ]);
                 populateAutocomplete();
                 applyFilters();
-                showToast('Data berhasil dimuat.', 'success');
+                showToast('Data berhasil disinkronkan.', 'success');
+                updateSyncStatusUI('synced');
             } catch (error) {
-                showToast(error.message, 'error');
+                console.error("Gagal memuat data:", error);
+                showToast("Gagal memuat data baru. Bekerja dengan data offline. Periksa koneksi Anda.", 'error');
+                updateSyncStatusUI('offline');
             } finally {
                 document.querySelectorAll('[id^="refresh-"]').forEach(btn => btn.disabled = false);
             }
@@ -751,62 +796,47 @@
             return `${normalizedBpb}|${normalizedTujuan}|${itemsString}`;
         };
         
-        const isDuplicateSubmission = (fingerprint, type) => {
-            const sourceData = type === 'kirim' ? allDataKirim : allDataTerima;
+        const isDuplicateSubmission = (newFingerprint, type) => {
             const queueKey = type === 'kirim' ? 'submissionQueueKirim' : 'submissionQueueTerima';
             const queue = JSON.parse(localStorage.getItem(queueKey) || '[]');
-            if (queue.some(item => item.fingerprint === fingerprint)) {
+            
+            if (queue.some(item => item.fingerprint === newFingerprint)) {
                 return true;
             }
-            const groupedData = sourceData.reduce((acc, row) => {
-                const bpb = String(row['No BPB'] || '').trim().toUpperCase();
-                const tujuan = normalizeTujuan(row.Tujuan);
-                const key = `${bpb}|${tujuan}`;
-                
-                if (!acc[key]) {
-                    acc[key] = {
-                        commonData: { 'No BPB': bpb, 'Tujuan': row.Tujuan },
-                        items: []
-                    };
+            const sourceData = type === 'kirim' ? allDataKirim : allDataTerima;
+            const [bpb, tujuan, itemsStr] = newFingerprint.split('|');
+            if (!itemsStr) return false;
+            const newItems = itemsStr.split(',');
+            const existingItemsForBpb = new Set();
+            sourceData.forEach(row => {
+                const rowBpb = String(row['No BPB'] || '').trim().toUpperCase();
+                const rowTujuan = normalizeTujuan(row.Tujuan);
+                if (rowBpb === bpb && rowTujuan === tujuan) {
+                    const itemCode = String(row['Kode Barang'] || '').trim().toUpperCase();
+                    const itemQty = parseInt(row.Jumlah) || 0;
+                    existingItemsForBpb.add(`${itemCode}:${itemQty}`);
                 }
-                acc[key].items.push({
-                    'Kode Barang': String(row['Kode Barang'] || '').trim().toUpperCase(),
-                    'Jumlah': parseInt(row.Jumlah) || 0
-                });
-                return acc;
-            }, {});
-            for (const key in groupedData) {
-                const existingFingerprint = createSubmissionFingerprint(
-                    groupedData[key].commonData,
-                    groupedData[key].items
-                );
-                if (existingFingerprint === fingerprint) {
-                    return true;
-                }
+            });
+
+            if (existingItemsForBpb.size === 0) return false;
+
+            for (const newItem of newItems) {
+                if (existingItemsForBpb.has(newItem)) return true;
             }
             return false;
         };
         
         function handleFormSubmit(form) {
-            if (isSubmitting) {
-                console.warn("Submission attempt ignored: another is in progress.");
-                return;
-            }
+            if (isSubmitting) return;
 
             const submissionId = `SUB-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
-            console.log(`Starting submission with ID: ${submissionId}`);
-
             const submitButton = form.querySelector('.submit-button');
             const originalButtonHTML = submitButton.innerHTML;
             
             try {
                 isSubmitting = true;
                 submitButton.disabled = true;
-                submitButton.innerHTML = `
-                    <svg class="h-5 w-5 mr-2" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor">
-                        <path stroke-linecap="round" stroke-linejoin="round" d="M18.364 18.364A9 9 0 005.636 5.636m12.728 12.728A9 9 0 015.636 5.636m12.728 12.728L5.636 5.636" />
-                    </svg>
-                    MENGIRIM...`;
+                submitButton.innerHTML = `<svg class="animate-spin h-5 w-5 mr-3" viewBox="0 0 24 24">...</svg> MENGIRIM...`;
 
                 const itemRows = form.querySelectorAll('.item-row');
                 const items = Array.from(itemRows).map(row => ({
@@ -864,7 +894,6 @@
                 showToast('Data ditambahkan ke antrean pengiriman.', 'success');
                 if (isAudioReady) {
                     const now = Tone.now();
-                    // Suara notifikasi 'happy' yang baru
                     synth.triggerAttackRelease("G5", "16n", now);
                     synth.triggerAttackRelease("A5", "16n", now + 0.1);
                     synth.triggerAttackRelease("C6", "16n", now + 0.2);
@@ -873,11 +902,7 @@
 
                 const targetArray = isKirimForm ? allDataKirim : allDataTerima;
                 items.forEach(item => {
-                    targetArray.push({
-                        ...newRowDataCommon,
-                        'Kode Barang': item['Kode Barang'],
-                        'Jumlah': item.Jumlah,
-                    });
+                    targetArray.push({ ...newRowDataCommon, 'Kode Barang': item['Kode Barang'], 'Jumlah': item.Jumlah, });
                 });
 
                 applyFilters();
@@ -893,10 +918,10 @@
                     showToast('Terjadi kesalahan saat memproses data.', 'error');
                 }
             } finally {
-                setTimeout(() => {
+                // Setelah selesai, status tombol akan diatur ulang oleh updateSyncStatusUI
+                 setTimeout(() => {
                     isSubmitting = false;
-                    submitButton.disabled = false;
-                    submitButton.innerHTML = originalButtonHTML;
+                    updateSyncStatusUI(syncStatus); // Atur ulang state tombol sesuai status koneksi
                 }, 500);
             }
         }
@@ -966,15 +991,9 @@
             if (hours === 11 && minutes === 50 && !hasShownBreakNotification) {
                 breakNotification.classList.add('show');
                 hasShownBreakNotification = true;
-
-                setTimeout(() => {
-                    breakNotification.classList.remove('show');
-                }, 60000); 
+                setTimeout(() => { breakNotification.classList.remove('show'); }, 60000); 
             }
-
-            if (hours === 11 && minutes === 51) {
-                hasShownBreakNotification = false;
-            }
+            if (hours === 11 && minutes === 51) { hasShownBreakNotification = false; }
         }
         
         const resetAppState = () => {
@@ -984,19 +1003,14 @@
             setTimeout(() => {
                 appContainer.classList.add('hidden');
                 loginScreen.classList.remove('hidden');
-                requestAnimationFrame(() => {
-                    loginScreen.style.opacity = '1';
-                });
-
+                requestAnimationFrame(() => { loginScreen.style.opacity = '1'; });
                 loginForm.reset();
                 document.getElementById('password').value = '';
                 loginError.classList.add('hidden');
-
-                if (breakCheckInterval) {
-                    clearInterval(breakCheckInterval);
-                    breakCheckInterval = null;
-                }
-
+                if (breakCheckInterval) clearInterval(breakCheckInterval);
+                if (resyncInterval) clearInterval(resyncInterval);
+                breakCheckInterval = null;
+                resyncInterval = null;
                 currentUserRole = null;
                 allDataKirim = [];
                 allDataTerima = [];
@@ -1004,30 +1018,19 @@
             }, 500);
         };
 
-
         const setupEventListeners = () => {
             formKirim.addEventListener('click', (e) => {
                 const addButton = e.target.closest('#add-item-btn-kirim');
                 const removeButton = e.target.closest('.remove-item-btn');
-
-                if (addButton) {
-                    addNewItemRow(document.getElementById('items-container-kirim'));
-                } else if (removeButton) {
-                    removeButton.closest('.item-row').remove();
-                }
+                if (addButton) addNewItemRow(document.getElementById('items-container-kirim'));
+                else if (removeButton) removeButton.closest('.item-row').remove();
             });
-
             formTerima.addEventListener('click', (e) => {
                 const addButton = e.target.closest('#add-item-btn-terima');
                 const removeButton = e.target.closest('.remove-item-btn');
-
-                if (addButton) {
-                    addNewItemRow(document.getElementById('items-container-terima'));
-                } else if (removeButton) {
-                    removeButton.closest('.item-row').remove();
-                }
+                if (addButton) addNewItemRow(document.getElementById('items-container-terima'));
+                else if (removeButton) removeButton.closest('.item-row').remove();
             });
-            
             formKirim.addEventListener('submit', (e) => { e.preventDefault(); handleFormSubmit(formKirim); });
             formTerima.addEventListener('submit', (e) => { e.preventDefault(); handleFormSubmit(formTerima); });
 
@@ -1037,14 +1040,11 @@
                     const column = sortableHeader.dataset.column;
                     const table = sortableHeader.closest('table');
                     if (!table) return;
-                    
                     const tableId = table.id;
                     const currentSortKey = tableId + '-' + column;
                     let newDirection = (sortStates[currentSortKey] === 'asc') ? 'desc' : 'asc';
-                    
                     Object.keys(sortStates).forEach(key => { if (key.startsWith(tableId)) delete sortStates[key]; });
                     table.querySelectorAll('.sortable').forEach(th => th.classList.remove('asc', 'desc'));
-                    
                     sortStates[currentSortKey] = newDirection;
                     sortableHeader.classList.add(newDirection);
                     applyFilters();
@@ -1053,10 +1053,10 @@
 
             document.getElementById('refresh-kirim-btn').addEventListener('click', loadInitialView);
             document.getElementById('refresh-terima-btn').addEventListener('click', loadInitialView);
+            manualSyncBtn.addEventListener('click', loadInitialView);
 
             const antiDuplicateToggle = document.getElementById('anti-duplicate-toggle');
             const antiDuplicateLabel = document.getElementById('anti-duplicate-label').querySelector('span');
-
             antiDuplicateToggle.addEventListener('change', () => {
                 isAntiDuplicateOn = antiDuplicateToggle.checked;
                 localStorage.setItem('isAntiDuplicateOn', isAntiDuplicateOn);
@@ -1066,35 +1066,28 @@
 
             const antiLagToggle = document.getElementById('anti-lag-toggle');
             const antiLagLabel = document.getElementById('anti-lag-label').querySelector('span');
-
             const updatePerformanceMode = () => {
                 document.querySelectorAll('.table-filter').forEach(input => input.removeEventListener('input', debouncedApplyFilters));
                 formKirim.removeEventListener('input', debouncedSaveKirim);
                 formTerima.removeEventListener('input', debouncedSaveTerima);
-
                 isFastModeOn = antiLagToggle.checked;
                 localStorage.setItem('isFastModeOn', isFastModeOn);
                 antiLagLabel.textContent = isFastModeOn ? 'Mode Cepat' : 'Mode Lancar';
-
                 const saveDelay = isFastModeOn ? 300 : 1000;
                 const filterDelay = isFastModeOn ? 50 : 750;
-
                 debouncedSaveKirim = debounce(() => saveFormData('form-kirim'), saveDelay);
                 debouncedSaveTerima = debounce(() => saveFormData('form-terima'), saveDelay);
                 debouncedApplyFilters = debounce(applyFilters, filterDelay);
-
                 document.querySelectorAll('.table-filter').forEach(input => {
                     input.addEventListener('input', debouncedApplyFilters);
                 });
                 formKirim.addEventListener('input', debouncedSaveKirim);
                 formTerima.addEventListener('input', debouncedSaveTerima);
             };
-
             antiLagToggle.addEventListener('change', () => {
                 updatePerformanceMode();
                 showToast(antiLagToggle.checked ? 'Mode Cepat diaktifkan: Respon instan.' : 'Mode Lancar diaktifkan: Anti-jeda saat mengetik.', 'success');
             });
-
             const savedFastMode = localStorage.getItem('isFastModeOn') === 'true';
             antiLagToggle.checked = savedFastMode;
             updatePerformanceMode(); 
@@ -1113,6 +1106,13 @@
                 localStorage.removeItem('isAntiDuplicateOn');
                 resetAppState();
             });
+        };
+
+        const tryResync = () => {
+            if (syncStatus === 'offline') {
+                console.log("Mencoba sinkronisasi ulang otomatis...");
+                loadInitialView();
+            }
         };
 
         document.body.addEventListener('click', async () => {
@@ -1144,9 +1144,10 @@
             setupUIForRole(currentUserRole);
             loadFormData(currentUserRole === 'kirim' ? 'form-kirim' : 'form-terima');
             loadInitialView();
-            processSubmissionQueue();
+            setInterval(processSubmissionQueue, 5000); // Check queue every 5 seconds
             checkBreakTime();
             breakCheckInterval = setInterval(checkBreakTime, 30000);
+            resyncInterval = setInterval(tryResync, 30000); // Try to resync every 30s if offline
         } else {
             appContainer.classList.add('hidden');
             appContainer.style.opacity = '0';
@@ -1161,16 +1162,13 @@
             if (userCredentials[role] && userCredentials[role].password === password) {
                 if(isAudioReady) {
                     const now = Tone.now();
-                    // Suara notifikasi 'Ting Tung'
                     synth.triggerAttackRelease("C6", "16n", now);
                     synth.triggerAttackRelease("G5", "16n", now + 0.15);
                 }
                 
                 currentUserRole = role;
-                
                 const loginData = { role: currentUserRole };
                 localStorage.setItem('userLoginData', JSON.stringify(loginData));
-
                 isAntiDuplicateOn = true;
                 localStorage.setItem('isAntiDuplicateOn', 'true');
                 const antiDuplicateToggle = document.getElementById('anti-duplicate-toggle');
@@ -1184,22 +1182,19 @@
                 setTimeout(() => {
                     loginScreen.classList.add('hidden');
                     appContainer.classList.remove('hidden');
-                    requestAnimationFrame(() => {
-                        appContainer.style.opacity = '1';
-                    });
+                    requestAnimationFrame(() => { appContainer.style.opacity = '1'; });
                 }, 500);
 
                 loginError.classList.add('hidden');
-                
                 setupUIForRole(currentUserRole);
-                
                 loadFormData(currentUserRole === 'kirim' ? 'form-kirim' : 'form-terima');
                 loadInitialView();
-                processSubmissionQueue();
+                setInterval(processSubmissionQueue, 5000);
                 checkBreakTime();
                 breakCheckInterval = setInterval(checkBreakTime, 30000);
+                resyncInterval = setInterval(tryResync, 30000);
             } else {
-                loginError.classList.remove('hidden');
+                loginError.classList.add('hidden');
             }
         });
 
