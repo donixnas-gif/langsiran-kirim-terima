@@ -198,6 +198,7 @@
                                 <select id="tujuan-kirim" class="bg-gray-700 border border-gray-600 text-white text-sm rounded-lg focus:ring-blue-500 focus:border-blue-500 block w-full p-3" required>
                                     <option value="WH 07">WH 07</option>
                                     <option value="WH 05">WH 05</option>
+                                    <option value="WH 08">WH 08</option>
                                 </select>
                             </div>
                             <div><label for="pengirim-kirim" class="block mb-2 text-sm font-medium text-gray-300">Nama Pengirim</label><input type="text" id="pengirim-kirim" placeholder="NAMA LENGKAP PENGIRIM" class="auto-uppercase bg-gray-700 border border-gray-600 text-white text-sm rounded-lg focus:ring-blue-500 focus:border-blue-500 block w-full p-3" required></div>
@@ -251,6 +252,7 @@
                                 <select id="tujuan-terima" class="bg-gray-700 border border-gray-600 text-white text-sm rounded-lg focus:ring-blue-500 focus:border-blue-500 block w-full p-3" required>
                                     <option value="WH 07">WH 07</option>
                                     <option value="WH 05">WH 05</option>
+                                    <option value="WH 08">WH 08</option>
                                 </select>
                             </div>
                             <div><label for="penerima-terima" class="block mb-2 text-sm font-medium text-gray-300">Nama Penerima</label><input type="text" id="penerima-terima" placeholder="NAMA LENGKAP PENERIMA" class="auto-uppercase bg-gray-700 border border-gray-600 text-white text-sm rounded-lg focus:ring-blue-500 focus:border-blue-500 block w-full p-3" required></div>
@@ -316,6 +318,7 @@
                                     <th scope="col" class="px-2 py-2 sm:px-4 sm:py-3 sortable" data-column="Nama Pengirim">Pengirim<span class="sort-arrow"></span></th>
                                     <th scope="col" class="px-2 py-2 sm:px-4 sm:py-3 sortable" data-column="Kode Barang">Kode Barang<span class="sort-arrow"></span></th>
                                     <th scope="col" class="px-2 py-2 sm:px-4 sm:py-3 text-right sortable" data-column="Jumlah">Jumlah<span class="sort-arrow"></span></th>
+                                    <th scope="col" class="px-2 py-2 sm:px-4 sm:py-3 text-right">Selisih</th>
                                     <th scope="col" class="px-2 py-2 sm:px-4 sm:py-3">Keterangan</th>
                                     <th scope="col" class="px-2 py-2 sm:px-4 sm:py-3">Status</th>
                                 </tr>
@@ -350,6 +353,7 @@
                                     <th scope="col" class="px-2 py-2 sm:px-4 sm:py-3 sortable" data-column="Nama Penerima">Penerima<span class="sort-arrow"></span></th>
                                     <th scope="col" class="px-2 py-2 sm:px-4 sm:py-3 sortable" data-column="Kode Barang">Kode Barang<span class="sort-arrow"></span></th>
                                     <th scope="col" class="px-2 py-2 sm:px-4 sm:py-3 text-right sortable" data-column="Jumlah">Jumlah<span class="sort-arrow"></span></th>
+                                    <th scope="col" class="px-2 py-2 sm:px-4 sm:py-3 text-right">Selisih</th>
                                     <th scope="col" class="px-2 py-2 sm:px-4 sm:py-3">Keterangan</th>
                                     <th scope="col" class="px-2 py-2 sm:px-4 sm:py-3">Status</th>
                                 </tr>
@@ -442,20 +446,34 @@
         };
         const normalizeTujuan = (tujuan) => String(tujuan || '').replace(/\s/g, '').toUpperCase();
         
+        // --- PERUBAHAN LOGIKA PENCOCOKAN KODE BARANG ---
         const advancedNormalizeItemCode = (code) => {
             if (!code) return '';
             let normalized = String(code).toLowerCase();
+
+            // 1. Lakukan penggantian singkatan/ejaan
             const replacements = { 'hjmd': 'hmd', 'ugmd': 'umd', 'brmd': 'bmd', 'belge': 'beige', 'wmd': 'md', 'warna': '' };
             const sortedKeys = Object.keys(replacements).sort((a, b) => b.length - a.length);
             for (const key of sortedKeys) {
                 normalized = normalized.replace(new RegExp(key, 'g'), replacements[key]);
             }
-            normalized = normalized.replace(/[^a-z0-9]/g, '');
+            
+            // 2. Hapus kata-kata umum yang tidak relevan
             const wordsToRemove = ['ikea', 'mrdiy', 'polos'];
             wordsToRemove.forEach(word => {
-                normalized = normalized.replace(word, '');
+                // Menggunakan \b untuk memastikan hanya kata utuh yang dihapus
+                normalized = normalized.replace(new RegExp(`\\b${word}\\b`, 'g'), '');
             });
-            return normalized;
+
+            // 3. Bersihkan dari karakter non-alphanumeric, tapi pertahankan spasi
+            normalized = normalized.replace(/[^a-z0-9\s]/g, '');
+
+            // 4. Pisahkan kata, urutkan, lalu gabungkan lagi. Ini membuat urutan tidak berpengaruh.
+            // Contoh: "114 sinplas hj" dan "114 hj sinplas" akan menjadi "114hjsinplas"
+            const parts = normalized.split(/\s+/).filter(part => part.length > 0);
+            parts.sort();
+            
+            return parts.join('');
         };
 
         const codesMatch = (code1, code2) => {
@@ -648,7 +666,7 @@
             tableBody.innerHTML = '';
             
             if (data.length === 0) {
-                tableBody.innerHTML = `<tr><td colspan="8" class="text-center p-4">Tidak ada data yang cocok.</td></tr>`;
+                tableBody.innerHTML = `<tr><td colspan="9" class="text-center p-4">Tidak ada data yang cocok.</td></tr>`;
                 return;
             }
             let totalJumlah = 0;
@@ -656,6 +674,7 @@
             data.forEach(row => {
                 const tr = document.createElement('tr');
                 tr.className = 'bg-gray-800 border-b border-gray-700 hover:bg-gray-600';
+                
                 const eventDate = new Date(row.Tanggal);
                 const formattedDate = eventDate.toLocaleDateString('id-ID', { day: '2-digit', month: 'short', year: 'numeric' });
                 const tujuan = row.Tujuan || '';
@@ -666,8 +685,40 @@
                 const keterangan = row.Keterangan || '';
                 totalJumlah += jumlah;
 
-                let statusHtml = '';
                 const normalizedTujuan = normalizeTujuan(tujuan);
+                let statusHtml = '';
+                
+                // --- LOGIKA SELISIH ---
+                const totalDikirim = allDataKirim
+                    .filter(kirimRow => 
+                        String(kirimRow['No BPB'] || '').trim().toUpperCase() === noBpb &&
+                        normalizeTujuan(kirimRow.Tujuan) === normalizedTujuan &&
+                        codesMatch(kodeBarang, kirimRow['Kode Barang'])
+                    )
+                    .reduce((sum, item) => sum + (parseInt(item.Jumlah) || 0), 0);
+
+                const totalDiterima = allDataTerima
+                    .filter(terimaRow => 
+                        String(terimaRow['No BPB'] || '').trim().toUpperCase() === noBpb &&
+                        normalizeTujuan(terimaRow.Tujuan) === normalizedTujuan &&
+                        codesMatch(kodeBarang, terimaRow['Kode Barang'])
+                    )
+                    .reduce((sum, item) => sum + (parseInt(item.Jumlah) || 0), 0);
+
+                const selisih = totalDiterima - totalDikirim;
+
+                let selisihHtml = '';
+                let selisihColor = 'text-green-400 font-bold';
+                let selisihText = `${selisih}`;
+
+                if (selisih < 0) { 
+                    selisihColor = 'text-red-400 font-bold';
+                } else if (selisih > 0) {
+                    selisihColor = 'text-yellow-400 font-bold';
+                    selisihText = `+${selisih}`;
+                }
+                
+                selisihHtml = `<td class="px-2 py-2 sm:px-4 sm:py-3 text-right ${selisihColor}">${selisihText}</td>`;
 
                 if (type === 'kirim') {
                     const isReceived = allDataTerima.some(terimaRow => 
@@ -676,7 +727,7 @@
                         codesMatch(kodeBarang, terimaRow['Kode Barang'])
                     );
                     statusHtml = isReceived ? `<td class="px-2 py-2 sm:px-4 sm:py-3 text-green-400 font-semibold">Diterima</td>` : `<td class="px-2 py-2 sm:px-4 sm:py-3 text-yellow-400">Belum Diterima</td>`;
-                } else {
+                } else { 
                     const isInShipment = allDataKirim.some(kirimRow => 
                         String(kirimRow['No BPB'] || '').trim().toUpperCase() === noBpb &&
                         normalizeTujuan(kirimRow.Tujuan) === normalizedTujuan &&
@@ -692,6 +743,7 @@
                     <td class="px-2 py-2 sm:px-4 sm:py-3">${nama}</td>
                     <td class="px-2 py-2 sm:px-4 sm:py-3">${kodeBarang}</td>
                     <td class="px-2 py-2 sm:px-4 sm:py-3 text-right">${jumlah}</td>
+                    ${selisihHtml}
                     <td class="px-2 py-2 sm:px-4 sm:py-3 text-xs" title="${keterangan}">${keterangan.substring(0, 20)}${keterangan.length > 20 ? '...' : ''}</td>
                     ${statusHtml}
                 `;
@@ -700,7 +752,7 @@
             
             const totalRow = document.createElement('tr');
             totalRow.className = 'bg-gray-700 font-bold text-white border-t-2 border-gray-600';
-            totalRow.innerHTML = `<td colspan="5" class="px-2 py-2 sm:px-4 sm:py-3 text-right">Total (Halaman Ini):</td><td class="px-2 py-2 sm:px-4 sm:py-3 text-right">${totalJumlah}</td><td colspan="2" class="px-2 py-2 sm:px-4 sm:py-3"></td>`;
+            totalRow.innerHTML = `<td colspan="5" class="px-2 py-2 sm:px-4 sm:py-3 text-right">Total (Halaman Ini):</td><td class="px-2 py-2 sm:px-4 sm:py-3 text-right">${totalJumlah}</td><td colspan="3" class="px-2 py-2 sm:px-4 sm:py-3"></td>`;
             tableBody.appendChild(totalRow);
         };
         
@@ -710,7 +762,7 @@
             tableBody.innerHTML = '';
             const skeletonRowHtml = `
                 <tr class="bg-gray-800 border-b border-gray-700">
-                    ${Array(8).fill(0).map(() => `
+                    ${Array(9).fill(0).map(() => `
                         <td class="px-2 py-2 sm:px-4 sm:py-3">
                             <div class="skeleton h-4 w-full"></div>
                         </td>
