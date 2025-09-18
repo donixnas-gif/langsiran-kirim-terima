@@ -446,30 +446,22 @@
         };
         const normalizeTujuan = (tujuan) => String(tujuan || '').replace(/\s/g, '').toUpperCase();
         
-        // --- PERUBAHAN LOGIKA PENCOCOKAN KODE BARANG ---
         const advancedNormalizeItemCode = (code) => {
             if (!code) return '';
             let normalized = String(code).toLowerCase();
 
-            // 1. Lakukan penggantian singkatan/ejaan
             const replacements = { 'hjmd': 'hmd', 'ugmd': 'umd', 'brmd': 'bmd', 'belge': 'beige', 'wmd': 'md', 'warna': '' };
             const sortedKeys = Object.keys(replacements).sort((a, b) => b.length - a.length);
             for (const key of sortedKeys) {
                 normalized = normalized.replace(new RegExp(key, 'g'), replacements[key]);
             }
             
-            // 2. Hapus kata-kata umum yang tidak relevan
             const wordsToRemove = ['ikea', 'mrdiy', 'polos'];
             wordsToRemove.forEach(word => {
-                // Menggunakan \b untuk memastikan hanya kata utuh yang dihapus
                 normalized = normalized.replace(new RegExp(`\\b${word}\\b`, 'g'), '');
             });
 
-            // 3. Bersihkan dari karakter non-alphanumeric, tapi pertahankan spasi
             normalized = normalized.replace(/[^a-z0-9\s]/g, '');
-
-            // 4. Pisahkan kata, urutkan, lalu gabungkan lagi. Ini membuat urutan tidak berpengaruh.
-            // Contoh: "114 sinplas hj" dan "114 hj sinplas" akan menjadi "114hjsinplas"
             const parts = normalized.split(/\s+/).filter(part => part.length > 0);
             parts.sort();
             
@@ -525,7 +517,6 @@
             manualSyncBtn.classList.add('hidden');
             syncIcon.classList.remove('fa-spin');
 
-            // --- BARU: Logika untuk mengunci tombol submit ---
             const submitButtons = document.querySelectorAll('.submit-button');
             const handleButtonState = (button, enable, text, icon, colorClass, hoverClass) => {
                 button.disabled = !enable;
@@ -848,34 +839,47 @@
             return `${normalizedBpb}|${normalizedTujuan}|${itemsString}`;
         };
         
+        // --- PERBAIKAN BUG ANTI DUPLIKAT ---
         const isDuplicateSubmission = (newFingerprint, type) => {
             const queueKey = type === 'kirim' ? 'submissionQueueKirim' : 'submissionQueueTerima';
             const queue = JSON.parse(localStorage.getItem(queueKey) || '[]');
             
             if (queue.some(item => item.fingerprint === newFingerprint)) {
-                return true;
+                return true; // Cek duplikat di antrean yang belum terkirim
             }
+            
+            // Logika baru: hanya cek duplikat pada data HARI INI saja
             const sourceData = type === 'kirim' ? allDataKirim : allDataTerima;
+            const todayString = getLocalDateString(new Date().toISOString());
+            const sourceDataToday = sourceData.filter(row => getLocalDateString(row.Tanggal) === todayString);
+
             const [bpb, tujuan, itemsStr] = newFingerprint.split('|');
             if (!itemsStr) return false;
-            const newItems = itemsStr.split(',');
-            const existingItemsForBpb = new Set();
-            sourceData.forEach(row => {
-                const rowBpb = String(row['No BPB'] || '').trim().toUpperCase();
-                const rowTujuan = normalizeTujuan(row.Tujuan);
-                if (rowBpb === bpb && rowTujuan === tujuan) {
-                    const itemCode = String(row['Kode Barang'] || '').trim().toUpperCase();
-                    const itemQty = parseInt(row.Jumlah) || 0;
-                    existingItemsForBpb.add(`${itemCode}:${itemQty}`);
-                }
+            
+            const newItems = itemsStr.split(',').map(item => {
+                const [code, qty] = item.split(':');
+                return { code: advancedNormalizeItemCode(code), qty: parseInt(qty) };
             });
 
-            if (existingItemsForBpb.size === 0) return false;
-
+            // Cek apakah ada item yang sama persis (kode dan jumlah) pada BPB yang sama HARI INI
             for (const newItem of newItems) {
-                if (existingItemsForBpb.has(newItem)) return true;
+                 const isItemDuplicate = sourceDataToday.some(row => {
+                    const rowBpb = String(row['No BPB'] || '').trim().toUpperCase();
+                    const rowTujuan = normalizeTujuan(row.Tujuan);
+                    if (rowBpb === bpb && rowTujuan === tujuan) {
+                        const existingItemCode = advancedNormalizeItemCode(row['Kode Barang']);
+                        const existingItemQty = parseInt(row.Jumlah) || 0;
+                        return existingItemCode === newItem.code && existingItemQty === newItem.qty;
+                    }
+                    return false;
+                });
+
+                if (isItemDuplicate) {
+                    return true; // Ditemukan duplikat
+                }
             }
-            return false;
+
+            return false; // Tidak ada duplikat
         };
         
         function handleFormSubmit(form) {
@@ -915,7 +919,7 @@
                 if (isAntiDuplicateOn) {
                     const fingerprint = createSubmissionFingerprint(commonData, items);
                     if (isDuplicateSubmission(fingerprint, isKirimForm ? 'kirim' : 'terima')) {
-                        showToast('Data ini sudah pernah dikirim sebelumnya.', 'error');
+                        showToast('Data ini sudah pernah dikirim sebelumnya hari ini.', 'error');
                         if (isAudioReady) { synth.triggerAttackRelease("C4", "8n", Tone.now()); }
                         throw new Error("Duplicate submission detected."); 
                     }
@@ -970,10 +974,9 @@
                     showToast('Terjadi kesalahan saat memproses data.', 'error');
                 }
             } finally {
-                // Setelah selesai, status tombol akan diatur ulang oleh updateSyncStatusUI
                  setTimeout(() => {
                     isSubmitting = false;
-                    updateSyncStatusUI(syncStatus); // Atur ulang state tombol sesuai status koneksi
+                    updateSyncStatusUI(syncStatus); 
                 }, 500);
             }
         }
@@ -1196,10 +1199,10 @@
             setupUIForRole(currentUserRole);
             loadFormData(currentUserRole === 'kirim' ? 'form-kirim' : 'form-terima');
             loadInitialView();
-            setInterval(processSubmissionQueue, 5000); // Check queue every 5 seconds
+            setInterval(processSubmissionQueue, 5000); 
             checkBreakTime();
             breakCheckInterval = setInterval(checkBreakTime, 30000);
-            resyncInterval = setInterval(tryResync, 30000); // Try to resync every 30s if offline
+            resyncInterval = setInterval(tryResync, 30000); 
         } else {
             appContainer.classList.add('hidden');
             appContainer.style.opacity = '0';
