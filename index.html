@@ -541,7 +541,11 @@
                 syncStatusContainer.classList.add('bg-yellow-500', 'text-white');
                 syncIcon.innerHTML = `<i class="fa-solid fa-cloud-arrow-up fa-spin"></i>`;
                 syncText.textContent = 'Menyinkronkan...';
-                submitButtons.forEach(btn => handleButtonState(btn, false, 'Menunggu Data...', '<svg class="animate-spin h-5 w-5 mr-3" viewBox="0 0 24 24"></svg>'));
+                // FIX: Mengizinkan input pengguna bahkan saat sinkronisasi data awal sedang berjalan.
+                submitButtons.forEach(btn => {
+                    const isKirim = btn.closest('form').id.includes('kirim');
+                    handleButtonState(btn, true, isKirim ? 'Kirim Semua Data' : 'Terima Semua Data', '', isKirim ? 'bg-blue-600' : 'bg-green-600', isKirim ? 'hover:bg-blue-700' : 'hover:bg-green-700');
+                });
             } else { // offline
                 syncStatusContainer.classList.add('bg-red-500', 'text-white');
                 syncIcon.innerHTML = `<i class="fa-solid fa-triangle-exclamation"></i>`;
@@ -551,12 +555,25 @@
             }
         };
 
-        const fetchData = async (scriptURL) => {
-            const response = await fetch(scriptURL);
-            if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
-            const data = await response.json();
-            if (data.result === 'error') throw new Error(data.error);
-            return data.filter(row => row && typeof row.rowIndex !== 'undefined');
+        // --- OPTIMASI: Menambahkan Timeout pada Fetch Data ---
+        const fetchData = async (scriptURL, timeout = 30000) => { // FIX: Increased timeout to 30 seconds to prevent loading errors on slow connections.
+            const controller = new AbortController();
+            const id = setTimeout(() => controller.abort(), timeout);
+
+            try {
+                const response = await fetch(scriptURL, { signal: controller.signal });
+                clearTimeout(id);
+                if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
+                const data = await response.json();
+                if (data.result === 'error') throw new Error(data.error);
+                return data.filter(row => row && typeof row.rowIndex !== 'undefined');
+            } catch (error) {
+                clearTimeout(id);
+                if (error.name === 'AbortError') {
+                    throw new Error('Timeout'); // Melempar error spesifik untuk timeout
+                }
+                throw error; // Melempar error lain
+            }
         };
 
         const populateAutocomplete = () => {
@@ -782,7 +799,11 @@
                 updateSyncStatusUI('synced');
             } catch (error) {
                 console.error("Gagal memuat data:", error);
-                showToast("Gagal memuat data baru. Bekerja dengan data offline. Periksa koneksi Anda.", 'error');
+                if (error.message === 'Timeout') {
+                    showToast("Waktu memuat data habis. Periksa koneksi internet Anda.", 'error');
+                } else {
+                    showToast("Gagal memuat data baru. Bekerja dengan data offline.", 'error');
+                }
                 updateSyncStatusUI('offline');
             } finally {
                 document.querySelectorAll('[id^="refresh-"]').forEach(btn => btn.disabled = false);
@@ -879,7 +900,6 @@
             return false;
         };
         
-        // --- PERBAIKAN BUG PENGIRIMAN GANDA ---
         async function handleFormSubmit(form) {
             if (isSubmitting) return;
 
