@@ -839,16 +839,14 @@
             return `${normalizedBpb}|${normalizedTujuan}|${itemsString}`;
         };
         
-        // --- PERBAIKAN BUG ANTI DUPLIKAT ---
         const isDuplicateSubmission = (newFingerprint, type) => {
             const queueKey = type === 'kirim' ? 'submissionQueueKirim' : 'submissionQueueTerima';
             const queue = JSON.parse(localStorage.getItem(queueKey) || '[]');
             
             if (queue.some(item => item.fingerprint === newFingerprint)) {
-                return true; // Cek duplikat di antrean yang belum terkirim
+                return true; 
             }
             
-            // Logika baru: hanya cek duplikat pada data HARI INI saja
             const sourceData = type === 'kirim' ? allDataKirim : allDataTerima;
             const todayString = getLocalDateString(new Date().toISOString());
             const sourceDataToday = sourceData.filter(row => getLocalDateString(row.Tanggal) === todayString);
@@ -861,7 +859,6 @@
                 return { code: advancedNormalizeItemCode(code), qty: parseInt(qty) };
             });
 
-            // Cek apakah ada item yang sama persis (kode dan jumlah) pada BPB yang sama HARI INI
             for (const newItem of newItems) {
                  const isItemDuplicate = sourceDataToday.some(row => {
                     const rowBpb = String(row['No BPB'] || '').trim().toUpperCase();
@@ -875,24 +872,23 @@
                 });
 
                 if (isItemDuplicate) {
-                    return true; // Ditemukan duplikat
+                    return true;
                 }
             }
 
-            return false; // Tidak ada duplikat
+            return false;
         };
         
-        function handleFormSubmit(form) {
+        // --- PERBAIKAN BUG PENGIRIMAN GANDA ---
+        async function handleFormSubmit(form) {
             if (isSubmitting) return;
 
-            const submissionId = `SUB-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
             const submitButton = form.querySelector('.submit-button');
-            const originalButtonHTML = submitButton.innerHTML;
             
             try {
                 isSubmitting = true;
                 submitButton.disabled = true;
-                submitButton.innerHTML = `<svg class="animate-spin h-5 w-5 mr-3" viewBox="0 0 24 24">...</svg> MENGIRIM...`;
+                submitButton.innerHTML = `<svg class="animate-spin h-5 w-5 mr-3" viewBox="0 0 24 24"></svg> MENGIRIM...`;
 
                 const itemRows = form.querySelectorAll('.item-row');
                 const items = Array.from(itemRows).map(row => ({
@@ -912,9 +908,8 @@
                     Tujuan: document.getElementById(isKirimForm ? 'tujuan-kirim' : 'tujuan-terima').value,
                     Nama: document.getElementById(isKirimForm ? 'pengirim-kirim' : 'penerima-terima').value,
                     Keterangan: document.getElementById(isKirimForm ? 'keterangan-kirim' : 'keterangan-terima').value,
+                    SubmissionID: `SUB-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`
                 };
-
-                commonData.SubmissionID = submissionId;
 
                 if (isAntiDuplicateOn) {
                     const fingerprint = createSubmissionFingerprint(commonData, items);
@@ -941,7 +936,7 @@
                 
                 const queueKey = isKirimForm ? 'submissionQueueKirim' : 'submissionQueueTerima';
                 const queue = JSON.parse(localStorage.getItem(queueKey) || '[]');
-                const logDetails = `Submit form ${form.id} with ${items.length} items. ID: ${submissionId}`;
+                const logDetails = `Submit form ${form.id} with ${items.length} items. ID: ${commonData.SubmissionID}`;
                 const submissionFingerprint = createSubmissionFingerprint(commonData, items);
                 
                 queue.push({ data: newRowDataCommon, items: items, logDetails: logDetails, fingerprint: submissionFingerprint });
@@ -966,7 +961,7 @@
                 clearLocalStorage(form.id);
                 loadFormData(form.id);
                 
-                processSubmissionQueue();
+                await processSubmissionQueue();
 
             } catch (error) {
                 if (error.message !== "No items to submit." && error.message !== "Duplicate submission detected.") {
@@ -974,10 +969,8 @@
                     showToast('Terjadi kesalahan saat memproses data.', 'error');
                 }
             } finally {
-                 setTimeout(() => {
-                    isSubmitting = false;
-                    updateSyncStatusUI(syncStatus); 
-                }, 500);
+                 isSubmitting = false;
+                 updateSyncStatusUI(syncStatus); 
             }
         }
 
